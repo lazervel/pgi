@@ -1,0 +1,32 @@
+{
+  "name": "lazervel/pgi",
+  "description": "PGI is a PHP library that provides ready-to-use integrations for multiple payment gateways.",
+  "type": "library",
+  "keywords": ["payment getway", "integration", "razorpay", "php"],
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Lazervel\\PGI\\": "src/"
+    }
+  },
+  "require": {
+    "razorpay/razorpay": "^2.9",
+    "php": "^7.2 || ^8.0",
+    "lazervel/dotenv": "^1.0"
+  },
+  "homepage": "https://github.com/lazervel",
+  "authors": [
+    {
+      "name": "Indian Modassir",
+      "email": "indianmodassir@gmail.com",
+      "homepage": "https://github.com/indianmodassir"
+    }
+  ],
+  "funding": [
+    {
+      "type": "Github",
+      "url": "https://github.com/sponsors/indianmodassir"
+    }
+  ],
+  "minimum-stability": "stable"
+}
