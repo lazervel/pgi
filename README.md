@@ -46,25 +46,44 @@ $rzp = new Razorpay;
 In the sample app, the index.php file contains the code for order creation using Orders API.
 
 ```php
-$rzp->order([
-  'amount' => 50, // In Rupees        [required]
-  'currency',     // default INR      [optional]
-  'notes'         // default empty [] [optional]
-]);
+use Lazervel\PGI\Razorpay;
 
-// Error Handling
-$rzp->then(function($response) {
-  print_r($response);
+$rzp = new Razorpay;
+$rzp->order(
+  50,    // Amount In Rupees        [required]
+  'INR', // Currency => default INR [optional]
+  ['name' => 'Payment Getaway'] // Notes => default empty [] [optional]
+);
+```
+
+**Promises:**
+
+```php
+use Lazervel\PGI\Promises\Razorpay;
+
+$rzp = new Razorpay;
+$rzp->order(
+  50,    // Amount In Rupees        [required]
+  'INR', // Currency => default INR [optional]
+  ['name' => 'Payment Getaway'] // Notes => default empty [] [optional]
+)->then(function($data) {
+  print_r($data);
 })->catch(function($err) {
-  die($err);
+  print_r($err);
+})->finally(function() {
+  echo 'always run';
 });
 ```
+
 
 ### Verify Payment Signature
 
 This is a mandatory step that allows you to confirm the authenticity of the details returned to the checkout for successful payments.
 
 ```php
+use Lazervel\PGI\Razorpay;
+
+$rzp = new Razorpay;
 
 $orderId   = $_SESSION['razorpay_order_id'];   // Where you stored
 $paymentId = $_SESSION['razorpay_payment_id']; // Where you stored
@@ -72,15 +91,27 @@ $signature = $_SESSION['razorpay_signature'];  // Where you stored
 
 // All parameter is required
 $rzp->verifySignature($orderId, $paymentId, $signature);
+```
 
-// Error Handling
-$rzp->then(function($payment) {
-  // Success payment
-  print_r($payment);
+**Promises:**
+
+```php
+use Lazervel\PGI\Promises\Razorpay;
+
+$rzp = new Razorpay;
+
+$orderId   = $_SESSION['razorpay_order_id'];   // Where you stored
+$paymentId = $_SESSION['razorpay_payment_id']; // Where you stored
+$signature = $_SESSION['razorpay_signature'];  // Where you stored
+
+// All parameter is required
+$rzp->verifySignature($orderId, $paymentId, $signature)->then(function($data) {
+  print_r($data);
 })->catch(function($err) {
-  // Failed payment
-  die($err);
-});
+  print_r($err);
+})->finally(function() {
+  echo 'always run';
+});;
 ```
 
 License
