@@ -44,7 +44,21 @@ class Razorpay extends Promise
 
   public function isAuthorized() : self
   {
-    $this->razorpay->isAuthorized() ? $this->resolveWith(200, 'Authorized') : $this->rejectWith(401, 'Unauthorized');
+    try {
+      $this->razorpay->isAuthorized() ? $this->resolveWith(200, 'Authorized') : $this->rejectWith(401, 'Unauthorized');
+    } catch(\Exception $err) {
+      $this->rejectWith(400, $err);
+    }
+    return $this;
+  }
+
+  public function resetAuthorization() : self
+  {
+    try {
+      $this->razorpay->resetAuthorization() ? $this->resolveWith(200, 'Payment Session Reset') : $this->rejectWith(400, 'Unreset Payment Session');
+    } catch(\Exception $err) {
+      $this->rejectWith(400, $err);
+    }
     return $this;
   }
 

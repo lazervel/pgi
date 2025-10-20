@@ -18,7 +18,9 @@ interface RazorpayInterface
    */
   public function order(int $amount, string $currency = null, array $notes = []) : array;
 
-  public function isAuthorized() : bool;
+  public function resetAuthorization();
+
+  public function isAuthorized();
 
   /**
    * Validates payment signature and status Uses both SDK and manual HMAC check
@@ -27,8 +29,8 @@ interface RazorpayInterface
    * @param string $paymentId [required]
    * @param string $signature [required]
    * 
-   * @return bool True if signature and capture status are valid
+   * @return false| True if signature and capture status are valid
    */
-  public function verifySignature(string $orderId, string $paymentId, string $signature) : bool;
+  public function verifySignature(string $orderId, string $paymentId, string $signature);
 }
 ?>

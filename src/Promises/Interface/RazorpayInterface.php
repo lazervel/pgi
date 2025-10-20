@@ -18,6 +18,8 @@ interface RazorpayInterface
    */
   public function order(int $amount, string $currency = null, array $notes = []) : self;
 
+  public function resetAuthorization() : self;
+
   public function isAuthorized() : self;
 
   /**
