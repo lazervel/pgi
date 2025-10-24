@@ -4,24 +4,36 @@ declare(strict_types=1);
 
 namespace Lazervel\PGI;
 
-use Lazervel\PGI\Exception\InvalidAmountException;
 use Lazervel\PGI\Interface\RazorpayInterface;
-use Lazervel\PGI\Provider\Provider;
+use Lazervel\Cryptor\Cryptor;
 use Razorpay\Api\Api;
 
 /**
  * Seamless Razorpay gateway support for the PGI library.
+ * @see https://github.com/lazervel/pgi
+ * @package Lazervel\PGI
  */
-class Razorpay extends Provider implements RazorpayInterface
+class Razorpay extends Cryptor implements RazorpayInterface
 {
-  public string $receipt;
   private $Api;
+  private string $KEY_SECRET;
+  private string $KEY_ID;
+  public bool $isDebug = false;
+  
 
-  // Initializes Razorpay SDK with credentials Sets up API instance for transactions
-  public function __construct()
+  public function __construct(?string $KEY_ID = null, ?string $KEY_SECRET = null)
   {
-    parent::__construct('RZP_KEY_ID', 'RZP_KEY_SECRET');
-    $this->Api = new Api($this->KEY_ID, $this->KEY_SECRET);
+    $KEY_SECRET = $KEY_SECRET ?? ($_ENV['RZP_KEY_SECRET'] ?? $_ENV['KEY_SECRET'] ?? '');
+    $KEY_ID = $KEY_ID ?? ($_ENV['RZP_KEY_ID'] ?? $_ENV['KEY_ID'] ?? '');
+
+    if (!($KEY_ID && $KEY_SECRET)) {
+      throw new \Exception(\sprintf('Key ID or SECRET Not Found!'));
+    }
+
+    parent::__construct();
+    $this->Api = new Api($KEY_ID, $KEY_SECRET);
+    $this->KEY_SECRET = $this->encrypt($KEY_SECRET, null, $KEY_ID);
+    $this->KEY_ID = $KEY_ID;
   }
 
   /**
@@ -31,88 +43,42 @@ class Razorpay extends Provider implements RazorpayInterface
    * @param string|null $currency [optional]
    * @param array       $notes    [optional]
    * 
-   * @throws \Lazervel\PGI\Exception\InvalidAmountException
-   * @return array Returns frontend-friendly order payload
+   * @return array|false Returns frontend-friendly order payload
    */
-  public function order(int $amount, string $currency = null, array $notes = []) : array
+  public function order(int $amount, string $receipt = null, string $currency = null, array $notes = []) : array
   {
-    $this->receipt = (string)($this->receipt ?? \time());
+    $receipt = $receipt ?? \sprintf('%s', \time());
     $orderInfo = [
-      'receipt'         => $this->receipt,
+      'receipt'         => $receipt,
       'amount'          => $amount * 100,
       'currency'        => $currency ?? 'INR',
       'notes'           => $notes,
       'payment_capture' => 1
     ];
 
-    // Validate Amount value
-    if (!$amount || $amount <= 0) {
-      throw new InvalidAmountException(\sprintf('Invalid Amount [%d].', $amount));
-    }
-
-    // Create RZP order
-    $order = $this->Api->order->create($orderInfo);
-
-    // Send order details to frontend
-    return [
-      'order_id' => $order->id,
-      'reciept'  => $orderInfo['receipt'],
-      'amount'   => $orderInfo['amount'],
-      'currency' => $orderInfo['currency'],
-      'key'      => $this->KEY_ID
-    ];
-  }
-
-  public function resetAuthorization()
-  {
-    if (!$this->EnableSessionAuthorization) {
-      throw new \Exception('Session Authorization is not enabled!');
-    }
-
-    if (!isset($_SESSION)) \session_start();
-
-    unset(
-      $_SESSION['razorpay_payment_id'], $_SESSION['razorpay_order_id'],
-      $_SESSION['razorpay_signature'], $_SESSION['razorpay_amount']
-    );
-
-    return true;
-  }
-
-  /**
-   * @return false| True if Authorized, Otherwise false
-   */
-  public function isAuthorized()
-  {
-    if (!$this->EnableSessionAuthorization) {
-      throw new \Exception('Session Authorization is not enabled!');
-    }
+    if ($amount <= 0) {
+      if ($this->isDebug) {
+        throw new \InvalidArgumentException(\sprintf('Invalid Amount %d', $amount));
+      }
+      return false;
+    };
 
     try {
-      $expect_session_id = $this->sessionId();
-      if (!(
-        isset($_SESSION['session_id']) &&
-        isset($_SESSION['razorpay_payment_id']) &&
-        isset($_SESSION['razorpay_order_id']) &&
-        isset($_SESSION['razorpay_signature']) &&
-        isset($_SESSION['razorpay_amount'])
-      )) {
-        return false;
-      }
+      // Create RZP order
+      $order = $this->Api->order->create($orderInfo);
 
-      $isVerifiedSession = $expect_session_id === $_SESSION['session_id'];
-
-      $paymentId = $_SESSION['razorpay_payment_id'];
-      $orderId   = $_SESSION['razorpay_order_id'];
-      $signature = $_SESSION['razorpay_signature'];
-      $amount    = (int)$_SESSION['amount'];
-
-      $verifiedPayment = $this->verifySignature($orderId, $paymentId, $signature);
-      $isMatchedAmount = (int)$verifiedPayment->amount == $amount;
-      $verified = $isMatchedAmount && $isVerifiedSession && $verifiedPayment;
-
-      return $verified ? $verifiedPayment : false; 
+      // Send order details to frontend
+      return [
+        'order_id' => $order->id,
+        'receipt'  => $orderInfo['receipt'],
+        'amount'   => $orderInfo['amount'],
+        'currency' => $orderInfo['currency'],
+        'key'      => $this->KEY_ID
+      ];
     } catch(\Exception $err) {
+      if ($this->isDebug) {
+        throw $err;
+      }
       return false;
     }
   }
@@ -123,10 +89,11 @@ class Razorpay extends Provider implements RazorpayInterface
    * @param string $orderId   [required]
    * @param string $paymentId [required]
    * @param string $signature [required]
+   * @param int    $amount    [required]
    * 
    * @return false| True if signature and capture status are valid
    */
-  public function verifySignature(string $orderId, string $paymentId, string $signature)
+  public function verifySignature(string $orderId, string $paymentId, string $signature, int $amount)
   {
     try {
       // Signature Verification paid/failed using SDK
@@ -138,25 +105,58 @@ class Razorpay extends Provider implements RazorpayInterface
 
       // Fetch payment status
       $payment = $this->Api->payment->fetch($paymentId);
-      $isCaptured = $payment->status === 'captured';
+      $isOrderMatch = $payment->order_id === $orderId;
+      $isCaptured = $isOrderMatch && $payment->status === 'captured';
+
+      // Handle mismatch amount!
+      if (!($amount && $payment->amount === $amount * 100)) {
+        return false;
+      }
 
       // Manually Verify
       $payload = \sprintf('%s|%s', $orderId, $paymentId);
-      $generate_signature = \hash_hmac('sha256', $payload, $this->KEY_SECRET);
+      $KEY_SECRET = $this->decrypt($this->KEY_SECRET, null, $this->KEY_ID);
+      $generate_signature = \hash_hmac('sha256', $payload, $KEY_SECRET);
+
+      // Final Verification
       $verified = $isCaptured && \hash_equals($generate_signature, $signature);
 
-      if ($this->EnableSessionAuthorization && $verified) {
-        $_SESSION['session_id']      = $this->sessionId();
-        $_SESSION['razorpay_amount'] = $payment->amount / 100;
-
-        $_SESSION['razorpay_payment_id'] = $paymentId;
-        $_SESSION['razorpay_order_id']   = $orderId;
-        $_SESSION['razorpay_signature']  = $signature;
-      }
       return $verified ? $payment : false;
     } catch(\Exception $err) {
+      if ($this->isDebug) {
+        throw $err;
+      }
       return false;
     }
+  }
+
+  /**
+   * Prevents serialization of sensitive data.
+   *
+   * @return array An empty array to avoid exposing sensitive information.
+   */
+  public function __sleep() : array
+  {
+    return [];
+  }
+
+  /**
+   * Controls what is displayed during debugging (e.g., var_dump()).
+   *
+   * @return array An array hiding the encryption key from output.
+   */
+  public function __debugInfo(): array
+  {
+    return [];
+  }
+
+  /**
+   * Destructor to securely erase the encryption key from memory.
+   */
+  public function __destruct()
+  {
+    $this->KEY_ID = $this->KEY_SECRET = '';
+    $this->Api = null;
   }
 }
 ?>
